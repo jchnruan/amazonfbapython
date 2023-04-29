@@ -1,0 +1,46 @@
+import boto3
+import datetime
+
+# Set up AWS credentials
+ACCESS_KEY = 'YOUR_ACCESS_KEY'
+SECRET_ACCESS_KEY = 'YOUR_SECRET_ACCESS_KEY'
+
+# Set up MWS client
+mws_client = boto3.client('mws',
+                          aws_access_key_id=ACCESS_KEY,
+                          aws_secret_access_key=SECRET_ACCESS_KEY,
+                          region_name='YOUR_REGION')
+
+# Set up variables for checking feedback
+date_range = 7 # Number of days to look back for feedback
+feedback_threshold = 3 # Number of feedback reviews needed to restock an item
+
+# Call GetFeedSubmissionList operation to check for new feedback
+feedback_response = mws_client.get_feed_submission_list(MaxCount=10, FeedProcessingStatusList=['_DONE_'], FeedTypeList=['_POST_PRODUCT_REVIEW_DATA_'])
+
+# Loop through each submission and check if it's within the date range
+for submission in feedback_response['FeedSubmissionInfo']:
+    submission_date = submission['SubmittedDate'].replace(tzinfo=None)
+    days_ago = (datetime.datetime.utcnow() - submission_date).days
+    
+    if days_ago <= date_range:
+        print(f"New feedback received: {submission['FeedSubmissionId']}")
+
+# Call GetReportList operation to check for new long-term storage inventory
+inventory_report_response = mws_client.get_report_list(MaxCount=10, ReportTypeList=['_GET_AFN_INVENTORY_DATA_'])
+
+# Loop through each report and check if it's within the date range
+for report in inventory_report_response['ReportInfo']:
+    report_date = report['AvailableDate'].replace(tzinfo=None)
+    days_ago = (datetime.datetime.utcnow() - report_date).days
+    
+    if days_ago <= date_range:
+        print(f"New long-term storage inventory: {report['ReportId']}")
+
+# Call ListInventorySupply operation to check for items that need to be restocked
+inventory_supply_response = mws_client.list_inventory_supply(QueryStartDateTime=datetime.datetime.utcnow() - datetime.timedelta(days=date_range))
+
+# Loop through each item and check if it needs to be restocked
+for item in inventory_supply_response['InventorySupplyList']:
+    if item['InStockSupplyQuantity'] <= feedback_threshold:
+        print(f"Item needs to be restocked: {item['SellerSKU']}")
